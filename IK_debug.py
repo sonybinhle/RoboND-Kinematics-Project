@@ -69,22 +69,25 @@ def test_code(test_case):
                        [  sin(q)*cos(alpha), cos(q)*cos(alpha),  -sin(alpha),  -sin(alpha)*d],
                        [  sin(q)*sin(alpha), cos(q)*sin(alpha),   cos(alpha),   cos(alpha)*d],
                        [                  0,                 0,            0,              1]])
-    
+
+    # Define variables
     d1, d2, d3, d4, d5, d6, d7 = symbols('d1:8')
     a0, a1, a2, a3, a4, a5, a6 = symbols('a0:7')
     q1, q2, q3, q4, q5, q6, q7 = symbols('q1:8')
     alpha0, alpha1, alpha2, alpha3, alpha4, alpha5, alpha6 = symbols('alpha0:7')
 
+    # DH table derived from URDF file
     DH_Params = {
-	alpha0:       0, a0:      0, d1:  0.75, q1:          q1,
-	alpha1: -pi / 2, a1:   0.35, d2:     0, q2: q2 - pi / 2,
-	alpha2:       0, a2:   1.25, d3:     0, q3:          q3,
-	alpha3: -pi / 2, a3: -0.054, d4:   1.5, q4:          q4,
-	alpha4:  pi / 2, a4:      0, d5:     0, q5:          q5,
-	alpha5: -pi / 2, a5:      0, d6:     0, q6:          q6,
-	alpha6:       0, a6:      0, d7: 0.303, q7:           0,
+        alpha0:       0, a0:      0, d1:  0.75, q1:          q1,
+        alpha1: -pi / 2, a1:   0.35, d2:     0, q2: q2 - pi / 2,
+        alpha2:       0, a2:   1.25, d3:     0, q3:          q3,
+        alpha3: -pi / 2, a3: -0.054, d4:   1.5, q4:          q4,
+        alpha4:  pi / 2, a4:      0, d5:     0, q5:          q5,
+        alpha5: -pi / 2, a5:      0, d6:     0, q6:          q6,
+        alpha6:       0, a6:      0, d7: 0.303, q7:           0,
     }
 
+    # Formulate individual link's transformation matrix
     T0_1 = getTfMatrix(alpha0, a0, d1, q1).subs(DH_Params)
     T1_2 = getTfMatrix(alpha1, a1, d2, q2).subs(DH_Params)
     T2_3 = getTfMatrix(alpha2, a2, d3, q3).subs(DH_Params)
@@ -93,6 +96,7 @@ def test_code(test_case):
     T5_6 = getTfMatrix(alpha5, a5, d6, q6).subs(DH_Params)
     T6_E = getTfMatrix(alpha6, a6, d7, q7).subs(DH_Params)
 
+    # Formulate the transform matrix from base_link to gripper_link
     T0_E = simplify(T0_1 * T1_2 * T2_3 * T3_4 * T4_5 * T5_6 * T6_E)
 
     # Extract end-effector position and orientation from request
@@ -108,44 +112,53 @@ def test_code(test_case):
 
     r, p, y = symbols('r p y')
     
-    R_x = Matrix([[1, 0, 0],
+    # Define rotation matrix along with x, y, z axes
+    R_x = Matrix([[1,      0,       0],
                   [0, cos(r), -sin(r)],
                   [0, sin(r), cos(r)]])
-    R_y = Matrix([[cos(p), 0, sin(p)],
-                  [0, 1, 0],
-                  [-sin(p), 0, cos(p)]])
+
+    R_y = Matrix([[ cos(p), 0,  sin(p)],
+                  [0      , 1,       0],
+                  [-sin(p), 0,  cos(p)]])
+
     R_z = Matrix([[cos(y), -sin(y), 0],
-                  [sin(y), cos(y), 0],
-                  [0, 0, 1]])
+                  [sin(y),  cos(y), 0],
+                  [0     ,       0, 1]])
 
     R_E = R_z * R_y * R_x
 
-    R_Error = R_z.subs(y, pi) * R_y.subs(p, -pi / 2)
+    # Rotate z 180 degree and then rotate y -90 degree in order to align the different in orientation of gripper frame in URDF and DH parameters
+    R_E = R_E * R_z.subs(y, pi) * R_y.subs(p, -pi / 2)
 
-    R_E = R_E * R_Error
-
+    # Apply roll, pitch, yaw rotated value to transformation matrix of end-effector
     R_E = R_E.subs({ 'r': roll, 'p': pitch, 'y': yaw })
 
+    # Position of end-effector
     EE = Matrix([[px],
                  [py],
                  [pz]])
 
+    # Position of wrist-center
     WC = EE - (0.303) * R_E[:, 2]
 
     theta1 = atan2(WC[1], WC[0])
 
-    X = sqrt(WC[0] ** 2 + WC[1] ** 2) - 0.35
+    # Distance between joint2 vs WC in XO direction
+    joint2ToWcX = sqrt(WC[0] ** 2 + WC[1] ** 2) - 0.35 # a1 = 0.35
 
-    A = 1.501
-    B = sqrt(X ** 2 + (WC[2] - 0.75) ** 2)
-    C = 1.25
+    # Distance between joint2 vs WC in ZO direction
+    joint2ToWcY = WC[2] - 0.75 # d1 = 0.75
+
+    A = 1.50097168528 # sqrt(a3 ** 2 + d4 ** 2) = sqrt(-0.054 ** 2 + 1.5 ** 2)
+    B = sqrt(joint2ToWcX ** 2 + joint2ToWcY ** 2)
+    C = 1.25 # a2
 
     angle_a = acos((B ** 2 + C ** 2 - A ** 2) / (2 * B * C))
     angle_b = acos((A ** 2 + C ** 2 - B ** 2) / (2 * A * C))
     angle_c = acos((A ** 2 + B ** 2 - C ** 2) / (2 * A * B))
 
-    theta2 = pi / 2 - angle_a - atan2(WC[2] - 0.75, X)
-    theta3 = pi / 2 - (angle_b + 0.036)
+    theta2 = pi / 2 - angle_a - atan2(joint2ToWcY, joint2ToWcX)
+    theta3 = pi / 2 + theta2 - angle_b
 
     R0_3 = T0_1[0:3, 0:3] * T1_2[0:3, 0:3] * T2_3[0:3, 0:3]
     R0_3 = R0_3.evalf(subs={q1: theta1, q2: theta2, q3: theta3})
