@@ -18,6 +18,11 @@ from geometry_msgs.msg import Pose
 from mpmath import *
 from sympy import *
 
+def getTfMatrix(alpha, a, d, q):
+    return Matrix([[             cos(q),           -sin(q),            0,              a],
+                   [  sin(q)*cos(alpha), cos(q)*cos(alpha),  -sin(alpha),  -sin(alpha)*d],
+	           [  sin(q)*sin(alpha), cos(q)*sin(alpha),   cos(alpha),   cos(alpha)*d],
+	           [                  0,                 0,            0,              1]])
 
 def handle_calculate_IK(req):
     rospy.loginfo("Received %s eef-poses from the plan" % len(req.poses))
@@ -44,6 +49,50 @@ def handle_calculate_IK(req):
 	#
         ###
 
+        d1, d2, d3, d4, d5, d6, d7 = symbols('d1:8')
+        a0, a1, a2, a3, a4, a5, a6 = symbols('a0:7')
+        q1, q2, q3, q4, q5, q6, q7 = symbols('q1:8')
+        alpha0, alpha1, alpha2, alpha3, alpha4, alpha5, alpha6 = symbols('alpha0:7')
+
+        DH_Params = {
+	    alpha0:       0, a0:      0, d1:  0.75, q1:          q1,
+	    alpha1: -pi / 2, a1:   0.35, d2:     0, q2: q2 - pi / 2,
+	    alpha2:       0, a2:   1.25, d3:     0, q3:          q3,
+	    alpha3: -pi / 2, a3: -0.054, d4:   1.5, q4:          q4,
+	    alpha4:  pi / 2, a4:      0, d5:     0, q5:          q5,
+	    alpha5: -pi / 2, a5:      0, d6:     0, q6:          q6,
+	    alpha6:       0, a6:      0, d7: 0.303, q7:           0,
+        }
+
+        T0_1 = getTfMatrix(alpha0, a0, d1, q1).subs(DH_Params)
+        T1_2 = getTfMatrix(alpha1, a1, d2, q2).subs(DH_Params)
+        T2_3 = getTfMatrix(alpha2, a2, d3, q3).subs(DH_Params)
+        T3_4 = getTfMatrix(alpha3, a3, d4, q4).subs(DH_Params)
+        T4_5 = getTfMatrix(alpha4, a4, d5, q5).subs(DH_Params)
+        T5_6 = getTfMatrix(alpha5, a5, d6, q6).subs(DH_Params)
+        T6_E = getTfMatrix(alpha6, a6, d7, q7).subs(DH_Params)
+
+        T0_E = simplify(T0_1 * T1_2 * T2_3 * T3_4 * T4_5 * T5_6 * T6_E)
+
+
+        r, p, y = symbols('r p y')
+    
+        R_x = Matrix([[1, 0, 0],
+                      [0, cos(r), -sin(r)],
+                      [0, sin(r), cos(r)]])
+        R_y = Matrix([[cos(p), 0, sin(p)],
+                      [0, 1, 0],
+                      [-sin(p), 0, cos(p)]])
+        R_z = Matrix([[cos(y), -sin(y), 0],
+                      [sin(y), cos(y), 0],
+                      [0, 0, 1]])
+
+        R_E = R_z * R_y * R_x
+
+        R_Error = R_z.subs(y, pi) * R_y.subs(p, -pi / 2)
+
+        R_E = R_E * R_Error
+
         # Initialize service response
         joint_trajectory_list = []
         for x in xrange(0, len(req.poses)):
@@ -69,6 +118,35 @@ def handle_calculate_IK(req):
 	    #
 	    #
             ###
+	    R_E = R_E.subs({ 'r': roll, 'p': pitch, 'y': yaw })
+            EE = Matrix([[px],
+                         [py],
+                         [pz]])
+
+	    WC = EE - (0.303) * R_E[:, 2]
+
+	    theta1 = atan2(WC[1], WC[0])
+
+	    X = sqrt(WC[0] ** 2 + WC[1] ** 2) - 0.35
+
+	    A = 1.501
+	    B = sqrt(X ** 2 + (WC[2] - 0.75) ** 2)
+	    C = 1.25
+
+	    angle_a = acos((B ** 2 + C ** 2 - A ** 2) / (2 * B * C))
+	    angle_b = acos((A ** 2 + C ** 2 - B ** 2) / (2 * A * C))
+	    angle_c = acos((A ** 2 + B ** 2 - C ** 2) / (2 * A * B))
+
+	    theta2 = pi / 2 - angle_a - atan2(WC[2] - 0.75, X)
+	    theta3 = pi / 2 - (angle_b + 0.036)
+
+	    R0_3 = T0_1[0:3, 0:3] * T1_2[0:3, 0:3] * T2_3[0:3, 0:3]
+	    R0_3 = R0_3.evalf(subs={q1: theta1, q2: theta2, q3: theta3})
+	    R3_6 = R0_3.inv("LU") * R_E
+
+	    theta4 = atan2(R3_6[2,2], -R3_6[0,2])
+	    theta5 = atan2(sqrt(R3_6[0,2] ** 2 + R3_6[2,2] ** 2), R3_6[1,2])
+	    theta6 = atan2(-R3_6[1,1], R3_6[1,0])
 
             # Populate response for the IK request
             # In the next line replace theta1,theta2...,theta6 by your joint angle variables
