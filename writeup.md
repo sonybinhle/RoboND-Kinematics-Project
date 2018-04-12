@@ -7,6 +7,7 @@
 [transform-formula]: ./misc_images/transform-formula.png
 [wc]: ./misc_images/wc.png
 [theta23]: ./misc_images/theta23.png
+[results]: ./misc_images/results.png
 
 ## [Rubric](https://review.udacity.com/#!/rubrics/972/view) Points
 ### Here I will consider the rubric points individually and describe how I addressed each point in my implementation.  
@@ -139,30 +140,48 @@ To simplify problem, we could project WC to ground and calculate theta1 based on
 ```python
    theta1 = atan2(WC[1], WC[0])
 ```
-Next, we can calculate theta2, theta3 based on the projection to XZ axis
+Next, we can calculate theta2, theta3 based on the projection to X0Z0 axis
 ![alt text][theta23]
 ```python
     # Distance between joint2 vs WC in XO direction
     joint2ToWcX = sqrt(WC[0] ** 2 + WC[1] ** 2) - 0.35 # a1 = 0.35
-    
+
     # Distance between joint2 vs WC in ZO direction
     joint2ToWcY = WC[2] - 0.75 # d1 = 0.75
-    
+
     A = 1.50097168528 # sqrt(a3 ** 2 + d4 ** 2) = sqrt(-0.054 ** 2 + 1.5 ** 2)
     B = sqrt(joint2ToWcX ** 2 + joint2ToWcY ** 2)
     C = 1.25 # a2
-```
 
+    # Using cosine laws
+    angle_a = acos((B ** 2 + C ** 2 - A ** 2) / (2 * B * C))
+    angle_b = acos((A ** 2 + C ** 2 - B ** 2) / (2 * A * C))
+
+    theta2 = pi / 2 - angle_a - atan2(joint2ToWcY, joint2ToWcX)
+    theta3 = pi / 2 + theta2 - angle_b
+```
+Finally, calculate theta4, theta5, theta6
+```python
+    R0_3 = T0_1[0:3, 0:3] * T1_2[0:3, 0:3] * T2_3[0:3, 0:3]
+    R0_3 = R0_3.evalf(subs={q1: theta1, q2: theta2, q3: theta3})
+    R3_6 = R0_3.inv("LU") * R_E # R0_3 * R3_6 = RE -> inv(R0_3) * RE = inv(R0_3) * R0_3 * R3_6 = R3_6
+
+    theta4 = atan2(R3_6[2,2], -R3_6[0,2])
+    theta5 = atan2(sqrt(R3_6[0,2] ** 2 + R3_6[2,2] ** 2), R3_6[1,2])
+    theta6 = atan2(-R3_6[1,1], R3_6[1,0])
+```
 
 ### Project Implementation
 
 #### 1. Fill in the `IK_server.py` file with properly commented python code for calculating Inverse Kinematics based on previously performed Kinematic Analysis. Your code must guide the robot to successfully complete 8/10 pick and place cycles. Briefly discuss the code you implemented and your results. 
 
+In the code I used symbols, Matrix to create dynamic transformation matrix. 
+The code apply mostly mathematics in order to compute rotation angle of 6 individual joints.
+The implementation is simplified to find the solution easier. 
+For example, it did not count the constraints of each joint, they may have some restriction in term of min-max rotate angle.
+It may also not optimal in term of grasping the cylinder to trash in shortest time.
+Another way of solving Kuka Arm is incrementally move the arm like gradient descent, we could try to rotate small angle to bring the end-effector near the target as much as possible and continue to do it until end-effector reach the target.
 
-Here I'll talk about the code, what techniques I used, what worked and why, where the implementation might fail and how I might improve it if I were going to pursue this project further.  
-
-
-And just for fun, another example image:
-![alt text][image3]
+![alt text][results]
 
 

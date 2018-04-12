@@ -153,15 +153,16 @@ def test_code(test_case):
     B = sqrt(joint2ToWcX ** 2 + joint2ToWcY ** 2)
     C = 1.25 # a2
 
+    # Using cosine laws
     angle_a = acos((B ** 2 + C ** 2 - A ** 2) / (2 * B * C))
     angle_b = acos((A ** 2 + C ** 2 - B ** 2) / (2 * A * C))
 
     theta2 = pi / 2 - angle_a - atan2(joint2ToWcY, joint2ToWcX)
-    theta3 = pi / 2 + theta2 - angle_b
+    theta3 = pi / 2 - (angle_b + 0.036)
 
     R0_3 = T0_1[0:3, 0:3] * T1_2[0:3, 0:3] * T2_3[0:3, 0:3]
     R0_3 = R0_3.evalf(subs={q1: theta1, q2: theta2, q3: theta3})
-    R3_6 = R0_3.inv("LU") * R_E
+    R3_6 = R0_3.inv("LU") * R_E # R0_3 * R3_6 = RE -> inv(R0_3) * RE = inv(R0_3) * R0_3 * R3_6 = R3_6
 
     theta4 = atan2(R3_6[2,2], -R3_6[0,2])
     theta5 = atan2(sqrt(R3_6[0,2] ** 2 + R3_6[2,2] ** 2), R3_6[1,2])
