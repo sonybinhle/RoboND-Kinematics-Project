@@ -155,7 +155,6 @@ def test_code(test_case):
 
     angle_a = acos((B ** 2 + C ** 2 - A ** 2) / (2 * B * C))
     angle_b = acos((A ** 2 + C ** 2 - B ** 2) / (2 * A * C))
-    angle_c = acos((A ** 2 + B ** 2 - C ** 2) / (2 * A * B))
 
     theta2 = pi / 2 - angle_a - atan2(joint2ToWcY, joint2ToWcX)
     theta3 = pi / 2 + theta2 - angle_b
